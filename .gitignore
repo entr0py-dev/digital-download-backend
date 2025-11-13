@@ -1,0 +1,14 @@
+# Don't commit secrets
+.env
+
+# Don't commit installed packages
+node_modules/
+
+# Don't commit SQLite files (we're using Supabase now)
+*.db
+
+# Don't commit logs
+*.log
+
+# macOS system files
+.DS_Store
