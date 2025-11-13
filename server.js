@@ -34,9 +34,11 @@ app.post("/webhook", async (req, res) => {
 
   res.sendStatus(200);
 });
+app.get("/", (req, res) => {
+  res.send("🎉 Digital Download Backend is Running!");
+});
 
 const PORT = process.env.PORT || 3000;
-
 app.get("/download/:key", async (req, res) => {
   const { key } = req.params;
   const filename = await useDownloadKey(key);
