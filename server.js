@@ -1,7 +1,7 @@
 import express from "express";
 import dotenv from "dotenv";
 import crypto from "crypto";
-import { saveDownloadKey } from "./db.js";
+import { saveDownloadKey, useDownloadKey } from "./db.js";
 import { sendDownloadEmail } from "./email.js";
 
 dotenv.config();
@@ -36,6 +36,19 @@ app.post("/webhook", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
+
+app.get("/download/:key", async (req, res) => {
+  const { key } = req.params;
+  const filename = await useDownloadKey(key);
+
+  if (!filename) {
+    return res.status(404).send("⛔ Invalid or expired download link");
+  }
+
+  const fileUrl = `${process.env.DOWNLOAD_BASE_URL}${filename}`;
+  return res.redirect(fileUrl);
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 Server is running on port ${PORT}`);
 });
