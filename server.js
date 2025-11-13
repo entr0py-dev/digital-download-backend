@@ -1,55 +1,41 @@
-const express = require("express")
-const crypto = require("crypto")
-const bodyParser = require("body-parser")
-const { initDB, hasDownloadIssued, markDownloadIssued } = require("./db")
-const { sendDownloadEmail } = require("./email")
-require("dotenv").config()
+import express from "express";
+import dotenv from "dotenv";
+import crypto from "crypto";
+import { saveDownloadKey } from "./db.js";
+import { sendDownloadEmail } from "./email.js";
 
-const app = express()
-const PORT = process.env.PORT || 3000
-const WEBHOOK_SECRET = process.env.SHOPIFY_WEBHOOK_SECRET
+dotenv.config();
+const app = express();
+app.use(express.json());
 
-app.use(bodyParser.raw({ type: "application/json" }))
+app.post("/webhook", async (req, res) => {
+  const hmacHeader = req.headers["x-shopify-hmac-sha256"];
+  const body = JSON.stringify(req.body);
 
-app.post("/webhooks/shopify/orders-paid", async (req, res) => {
-    const hmacHeader = req.get("X-Shopify-Hmac-Sha256")
-    const digest = crypto
-        .createHmac("sha256", WEBHOOK_SECRET)
-        .update(req.body, "utf8")
-        .digest("base64")
+  const hash = crypto
+    .createHmac("sha256", process.env.SHOPIFY_WEBHOOK_SECRET)
+    .update(body, "utf8")
+    .digest("base64");
 
-    if (digest !== hmacHeader) return res.status(401).send("Invalid webhook")
+  if (hash !== hmacHeader) {
+    console.warn("❌ Invalid webhook signature");
+    return res.status(401).send("Unauthorized");
+  }
 
-    const payload = JSON.parse(req.body.toString("utf8"))
-    const orderId = payload.id
-    const customerEmail = payload.email
-    const lineItem = payload.line_items[0]
-    const key = `${orderId}-${lineItem.id}`
+  const lineItems = req.body?.line_items || [];
+  const customerEmail = req.body?.email;
 
-    const alreadyIssued = await hasDownloadIssued(key)
-    if (alreadyIssued) return res.status(200).send("Already issued")
+  for (const item of lineItems) {
+    const filename = item.title + ".mp3"; // or whatever file naming you use
+    const key = crypto.randomBytes(16).toString("hex");
+    await saveDownloadKey(key, filename);
+    await sendDownloadEmail(customerEmail, key);
+  }
 
-    await markDownloadIssued(key, customerEmail)
+  res.sendStatus(200);
+});
 
-    const link = `${process.env.DOWNLOAD_BASE_URL}${key}`
-    const body = `
-Hi there,
-
-Thanks for your purchase. Here's your download link:
-${link}
-
-⚠️ This link works only once. Please download and save your file immediately.  
-Once clicked, the link will expire.
-
-- Entropy Store`
-
-    await sendDownloadEmail(customerEmail, "Your One-Time Download Link", body)
-
-    res.status(200).send("Download link sent")
-})
-
-initDB().then(() => {
-    app.listen(PORT, () => {
-        console.log(`Server running on port ${PORT}`)
-    })
-})
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`🚀 Server is running on port ${PORT}`);
+});
