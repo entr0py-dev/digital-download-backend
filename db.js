@@ -1,7 +1,11 @@
 import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_KEY
+);
 
+// Save key and associated filenames (array)
 export async function saveDownloadKey(key, filenames) {
   const { error } = await supabase
     .from("downloads")
@@ -13,6 +17,7 @@ export async function saveDownloadKey(key, filenames) {
   }
 }
 
+// Use key and get filenames, then delete row (one-time use)
 export async function useDownloadKey(key) {
   const { data, error } = await supabase
     .from("downloads")
@@ -20,23 +25,16 @@ export async function useDownloadKey(key) {
     .eq("key", key)
     .single();
 
-  if (error || !data) return null;
-
-  await supabase.from("downloads").delete().eq("key", key);
-
-  return data.filenames;
-}
-
-
-  // Mark as used
-  const { error: updateError } = await supabase
-    .from("downloads")
-    .update({ used: true })
-    .eq("key", key);
-
-  if (updateError) {
-    console.error("❌ Error marking key as used:", updateError);
+  if (error || !data) {
+    console.warn("⚠️ No matching download key found.");
+    return null;
   }
 
-  return data.filename;
+  // Delete the key to prevent reuse
+  await supabase
+    .from("downloads")
+    .delete()
+    .eq("key", key);
+
+  return data.filenames;
 }
