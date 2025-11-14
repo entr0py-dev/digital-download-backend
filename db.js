@@ -1,18 +1,14 @@
 import { createClient } from "@supabase/supabase-js";
-import dotenv from "dotenv";
-
-dotenv.config();
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_ANON_KEY
+  process.env.SUPABASE_API_KEY
 );
 
-// Save a new download key (linked to a file)
 export async function saveDownloadKey(key, filename) {
   const { error } = await supabase
     .from("downloads")
-    .insert([{ key, filename, used: false }]);
+    .insert({ key, filename, used: false });
 
   if (error) {
     console.error("❌ Error saving download key:", error);
@@ -20,22 +16,28 @@ export async function saveDownloadKey(key, filename) {
   }
 }
 
-// Validate and mark key as used (one-time access)
 export async function useDownloadKey(key) {
   const { data, error } = await supabase
     .from("downloads")
-    .select("*")
+    .select("filename")
     .eq("key", key)
+    .eq("used", false)
     .single();
 
-  if (error || !data || data.used) {
-    return null; // Already used or doesn't exist
+  if (error || !data) {
+    console.warn("⚠️ Invalid or already used key:", error || "No data");
+    return null;
   }
 
-  await supabase
+  // Mark as used
+  const { error: updateError } = await supabase
     .from("downloads")
     .update({ used: true })
     .eq("key", key);
+
+  if (updateError) {
+    console.error("❌ Error marking key as used:", updateError);
+  }
 
   return data.filename;
 }
