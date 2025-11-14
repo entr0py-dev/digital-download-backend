@@ -1,43 +1,24 @@
-import fetch from "node-fetch"; // add at top if missing
-import { Readable } from "node:stream"; // for conversion if needed
+import express from "express";
+import dotenv from "dotenv";
+import crypto from "crypto";
+import fetch from "node-fetch";
+import { Readable } from "node:stream";
+import { saveDownloadKey, useDownloadKey } from "./db.js";
+import { sendDownloadEmail } from "./email.js";
 
-// inside your route
-app.get("/download/:key", async (req, res) => {
-  const { key } = req.params;
-  console.log("🔑 Received key:", key);
-  
-  try {
-    const filename = await useDownloadKey(key);
-    console.log("📁 Found filename:", filename);
+dotenv.config();
 
-    if (!filename) {
-      return res.status(404).send("⛔ Invalid or expired download link");
-    }
+const app = express();
 
-    const bucket = process.env.SUPABASE_BUCKET_NAME;
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const fileUrl = `${supabaseUrl}/storage/v1/object/public/${bucket}/${filename}`;
-    console.log("➡️ Redirecting to fileUrl:", fileUrl);
-
-    const fetchResponse = await fetch(fileUrl);
-    if (!fetchResponse.ok) {
-      console.error("❌ Failed to fetch file from Supabase:", fetchResponse.status, await fetchResponse.text());
-      return res.status(500).send("❌ Failed to fetch file from storage");
-    }
-
-    // Convert web stream to Node Readable if necessary
-    const nodeStream = Readable.fromWeb ? Readable.fromWeb(fetchResponse.body) : fetchResponse.body;
-
-    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-    res.setHeader("Content-Type", fetchResponse.headers.get("Content-Type") || "application/octet-stream");
-
-    nodeStream.pipe(res);
-  } catch (err) {
-    console.error("⚠️ Download route error:", err);
-    return res.status(500).send("⚠️ Server error during download");
-  }
-});
-
+// 👇 Capture raw body for webhook signature verification
+app.use(
+  "/webhook",
+  express.json({
+    verify: (req, res, buf) => {
+      req.rawBody = buf.toString();
+    },
+  })
+);
 
 // ✅ Webhook route
 app.post("/webhook", async (req, res) => {
@@ -58,7 +39,7 @@ app.post("/webhook", async (req, res) => {
   const customerEmail = req.body?.email;
 
   for (const item of lineItems) {
-    const filename = item.title + ".mp3";
+    const filename = item.title + ".zip"; // 🗜️ Only supporting ZIPs
     const key = crypto.randomBytes(16).toString("hex");
     await saveDownloadKey(key, filename);
     await sendDownloadEmail(customerEmail, key);
@@ -72,30 +53,45 @@ app.get("/", (req, res) => {
   res.send("🎉 Digital Download Backend is Running!");
 });
 
+// ✅ Download route (force file download)
 app.get("/download/:key", async (req, res) => {
   const { key } = req.params;
-  const filename = await useDownloadKey(key);
 
-  console.log("🔑 Received key:", key);
-  console.log("📁 Found filename:", filename);
+  try {
+    const filename = await useDownloadKey(key);
+    console.log("🔑 Received key:", key);
+    console.log("📁 Found filename:", filename);
 
-  if (!filename) {
-    return res.status(404).send("⛔ Invalid or expired download link");
+    if (!filename) {
+      return res.status(404).send("⛔ Invalid or expired download link");
+    }
+
+    const bucket = process.env.SUPABASE_BUCKET_NAME;
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const fileUrl = `${supabaseUrl}/storage/v1/object/public/${bucket}/${filename}`;
+    console.log("➡️ Fetching file from:", fileUrl);
+
+    const fetchResponse = await fetch(fileUrl);
+    if (!fetchResponse.ok) {
+      console.error("❌ Fetch failed:", fetchResponse.status, await fetchResponse.text());
+      return res.status(500).send("❌ Failed to fetch file from Supabase");
+    }
+
+    const stream = Readable.fromWeb
+      ? Readable.fromWeb(fetchResponse.body)
+      : fetchResponse.body;
+
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-Type", fetchResponse.headers.get("Content-Type") || "application/octet-stream");
+
+    stream.pipe(res);
+  } catch (err) {
+    console.error("⚠️ Download error:", err);
+    return res.status(500).send("⚠️ Server error during download");
   }
-
-  const bucket = process.env.SUPABASE_BUCKET_NAME; // e.g. "Entropy"
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const fileUrl = `${supabaseUrl}/storage/v1/object/public/${bucket}/${filename}`;
-
-  // Download the file and pipe it back to the user
-  const response = await fetch(fileUrl);
-  if (!response.ok) {
-    return res.status(500).send("❌ Failed to fetch file from Supabase");
-  }
-
-  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-  res.setHeader("Content-Type", response.headers.get("Content-Type") || "application/octet-stream");
-
-  response.body.pipe(res); // Stream the file to the user
 });
 
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`🚀 Server is running on port ${PORT}`);
+});
