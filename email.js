@@ -5,7 +5,8 @@ export async function sendDownloadEmail(to, key) {
   const downloadUrl = `${process.env.BACKEND_URL}/download/${key}`;
 
   const subject = "Your Digital Download";
-  const body = `Thanks for your purchase!\n\nYour one-time download link:\n${downloadUrl}\n\nThis link works once. If you need help, reply to this email.`;
+  const body = `Thanks for your purchase!\n\nYour one-time download link for the .zip file:\n${downloadUrl}\n\nThis link works once. If you need help, reply to this email.`;
+
 
   const res = await fetch("https://api.mailersend.com/v1/email", {
     method: "POST",
