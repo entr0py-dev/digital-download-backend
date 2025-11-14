@@ -61,6 +61,9 @@ app.get("/download/:key", async (req, res) => {
   }
 
   const fileUrl = `${process.env.DOWNLOAD_BASE_URL}${filename}`;
+
+
+
   return res.redirect(fileUrl);
 });
 
