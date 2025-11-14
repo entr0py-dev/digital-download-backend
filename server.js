@@ -39,10 +39,17 @@ app.post("/webhook", async (req, res) => {
   const customerEmail = req.body?.email;
 
   for (const item of lineItems) {
-    const filename = item.title + ".zip"; // 🗜️ Only supporting ZIPs
-    const key = crypto.randomBytes(16).toString("hex");
-    await saveDownloadKey(key, filename);
-    await sendDownloadEmail(customerEmail, key);
+   const filenames = [
+  item.title + "-1.wav",
+  item.title + "-2.wav",
+  item.title + "-3.wav",
+  item.title + "-4.wav",
+  item.title + "-5.wav",
+];
+const key = crypto.randomBytes(16).toString("hex");
+await saveDownloadKey(key, filenames);
+await sendDownloadEmail(customerEmail, key);
+
   }
 
   res.sendStatus(200);
