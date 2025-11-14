@@ -51,7 +51,6 @@ app.get("/", (req, res) => {
   res.send("🎉 Digital Download Backend is Running!");
 });
 
-// ✅ Download link route
 app.get("/download/:key", async (req, res) => {
   const { key } = req.params;
   const filename = await useDownloadKey(key);
@@ -63,12 +62,19 @@ app.get("/download/:key", async (req, res) => {
     return res.status(404).send("⛔ Invalid or expired download link");
   }
 
-  const fileUrl = `${process.env.DOWNLOAD_BASE_URL}${filename}`;
-  return res.redirect(fileUrl);
+  const bucket = process.env.SUPABASE_BUCKET_NAME; // e.g. "Entropy"
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const fileUrl = `${supabaseUrl}/storage/v1/object/public/${bucket}/${filename}`;
+
+  // Download the file and pipe it back to the user
+  const response = await fetch(fileUrl);
+  if (!response.ok) {
+    return res.status(500).send("❌ Failed to fetch file from Supabase");
+  }
+
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.setHeader("Content-Type", response.headers.get("Content-Type") || "application/octet-stream");
+
+  response.body.pipe(res); // Stream the file to the user
 });
 
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`🚀 Server is running on port ${PORT}`);
-});
