@@ -1,23 +1,43 @@
-import fetch from "node-fetch";
-import express from "express";
-import dotenv from "dotenv";
-import crypto from "crypto";
-import { saveDownloadKey, useDownloadKey } from "./db.js";
-import { sendDownloadEmail } from "./email.js";
+import fetch from "node-fetch"; // add at top if missing
+import { Readable } from "node:stream"; // for conversion if needed
 
-dotenv.config();
+// inside your route
+app.get("/download/:key", async (req, res) => {
+  const { key } = req.params;
+  console.log("🔑 Received key:", key);
+  
+  try {
+    const filename = await useDownloadKey(key);
+    console.log("📁 Found filename:", filename);
 
-const app = express();
+    if (!filename) {
+      return res.status(404).send("⛔ Invalid or expired download link");
+    }
 
-// 👇 Capture raw body for webhook signature verification
-app.use(
-  "/webhook",
-  express.json({
-    verify: (req, res, buf) => {
-      req.rawBody = buf.toString();
-    },
-  })
-);
+    const bucket = process.env.SUPABASE_BUCKET_NAME;
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const fileUrl = `${supabaseUrl}/storage/v1/object/public/${bucket}/${filename}`;
+    console.log("➡️ Redirecting to fileUrl:", fileUrl);
+
+    const fetchResponse = await fetch(fileUrl);
+    if (!fetchResponse.ok) {
+      console.error("❌ Failed to fetch file from Supabase:", fetchResponse.status, await fetchResponse.text());
+      return res.status(500).send("❌ Failed to fetch file from storage");
+    }
+
+    // Convert web stream to Node Readable if necessary
+    const nodeStream = Readable.fromWeb ? Readable.fromWeb(fetchResponse.body) : fetchResponse.body;
+
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-Type", fetchResponse.headers.get("Content-Type") || "application/octet-stream");
+
+    nodeStream.pipe(res);
+  } catch (err) {
+    console.error("⚠️ Download route error:", err);
+    return res.status(500).send("⚠️ Server error during download");
+  }
+});
+
 
 // ✅ Webhook route
 app.post("/webhook", async (req, res) => {
