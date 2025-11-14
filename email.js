@@ -1,7 +1,8 @@
 import fetch from "node-fetch";
 
 export async function sendDownloadEmail(to, key) {
-  const downloadUrl = `${process.env.DOWNLOAD_BASE_URL}${key}`;
+  // FIXED 🔥 — use backend URL, not the Supabase file URL
+  const downloadUrl = `${process.env.BACKEND_URL}/download/${key}`;
 
   const subject = "Your Digital Download";
   const body = `Thanks for your purchase!\n\nYour one-time download link:\n${downloadUrl}\n\nThis link works once. If you need help, reply to this email.`;
