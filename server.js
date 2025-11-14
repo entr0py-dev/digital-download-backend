@@ -5,6 +5,7 @@ import fetch from "node-fetch";
 import { Readable } from "node:stream";
 import { saveDownloadKey, useDownloadKey } from "./db.js";
 import { sendDownloadEmail } from "./email.js";
+import archiver from "archiver";
 
 dotenv.config();
 
@@ -63,38 +64,38 @@ app.get("/", (req, res) => {
 // ✅ Download route (force file download)
 app.get("/download/:key", async (req, res) => {
   const { key } = req.params;
+  const filenames = await useDownloadKey(key);
 
-  try {
-    const filename = await useDownloadKey(key);
-    console.log("🔑 Received key:", key);
-    console.log("📁 Found filename:", filename);
+  console.log("🔑 Key:", key);
+  console.log("📁 Filenames:", filenames);
 
-    if (!filename) {
-      return res.status(404).send("⛔ Invalid or expired download link");
-    }
-
-    const bucket = process.env.SUPABASE_BUCKET_NAME;
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const fileUrl = `${supabaseUrl}/storage/v1/object/public/${bucket}/${filename}`;
-    console.log("➡️ Fetching file from:", fileUrl);
-
-    const fetchResponse = await fetch(fileUrl);
-    if (!fetchResponse.ok) {
-      console.error("❌ Fetch failed:", fetchResponse.status, await fetchResponse.text());
-      return res.status(500).send("❌ Failed to fetch file from Supabase");
-    }
-
-   const stream = fetchResponse.body;
-
-    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-    res.setHeader("Content-Type", fetchResponse.headers.get("Content-Type") || "application/octet-stream");
-
-    stream.pipe(res);
-  } catch (err) {
-    console.error("⚠️ Download error:", err);
-    return res.status(500).send("⚠️ Server error during download");
+  if (!filenames || !filenames.length) {
+    return res.status(404).send("⛔ Invalid or expired download link");
   }
+
+  const bucket = process.env.SUPABASE_BUCKET_NAME;
+  const supabaseUrl = process.env.SUPABASE_URL;
+
+  res.setHeader("Content-Disposition", `attachment; filename="download.zip"`);
+  res.setHeader("Content-Type", "application/zip");
+
+  const archive = archiver("zip", { zlib: { level: 9 } });
+  archive.pipe(res);
+
+  for (const filename of filenames) {
+    const fileUrl = `${supabaseUrl}/storage/v1/object/public/${bucket}/${filename}`;
+    const response = await fetch(fileUrl);
+
+    if (response.ok) {
+      archive.append(response.body, { name: filename });
+    } else {
+      console.warn(`⚠️ Failed to fetch: ${filename}`);
+    }
+  }
+
+  archive.finalize();
 });
+
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
