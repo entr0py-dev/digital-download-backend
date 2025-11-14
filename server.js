@@ -40,21 +40,31 @@ app.post("/webhook", async (req, res) => {
   const customerEmail = req.body?.email;
 
   for (const item of lineItems) {
-   const filenames = [
-  item.title + "-1.wav",
-  item.title + "-2.wav",
-  item.title + "-3.wav",
-  item.title + "-4.wav",
-  item.title + "-5.wav",
-];
-const key = crypto.randomBytes(16).toString("hex");
-await saveDownloadKey(key, filenames);
-await sendDownloadEmail(customerEmail, key);
+    const productName = item.title;
+    const variant = item.variant_title;
 
+    if (
+      productName === "GEN B x VERTIGO BOOTLEG SELECTIONS VOL.1" &&
+      variant === "WAV"
+    ) {
+      const filenames = [
+        "MILEY CYRUS - WE CAN'T STOP (GEN B BOOTLEG) [DUB].wav",
+        "LADY GAGA - POKERFACE (VERTIGO x GEN B BOOTLEG) [DUB].wav",
+        "KODAK BLACK - ZEZE (GEN-B BOOTLEG) [DUB].wav",
+        "DIZZEE RASCAL - BONKERS (GEN B BOOTLEG) [DUB].wav",
+        "DAVE FT. JHUS - SAMANTHA (VERTIGO BOOTLEG) [DUB].wav"
+      ];
+
+      const key = crypto.randomBytes(16).toString("hex");
+
+      await saveDownloadKey(key, JSON.stringify(filenames));
+      await sendDownloadEmail(customerEmail, key);
+    }
   }
 
   res.sendStatus(200);
 });
+
 
 // ✅ Health check route
 app.get("/", (req, res) => {
