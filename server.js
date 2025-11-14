@@ -56,16 +56,17 @@ app.get("/download/:key", async (req, res) => {
   const { key } = req.params;
   const filename = await useDownloadKey(key);
 
+  console.log("🔑 Received key:", key);
+  console.log("📁 Found filename:", filename);
+
   if (!filename) {
     return res.status(404).send("⛔ Invalid or expired download link");
   }
 
   const fileUrl = `${process.env.DOWNLOAD_BASE_URL}${filename}`;
-
-
-
   return res.redirect(fileUrl);
 });
+
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
