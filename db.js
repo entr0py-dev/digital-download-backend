@@ -1,17 +1,15 @@
 import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY
-);
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+
 export async function saveDownloadKey(key, filenames) {
-  const response = await supabase
+  const { error } = await supabase
     .from("downloads")
     .insert([{ key, filenames }]);
 
-  if (response.error) {
-    console.error("❌ Error saving download key:", response.error);
-    throw response.error;
+  if (error) {
+    console.error("❌ Error saving download key:", error);
+    throw error;
   }
 }
 
