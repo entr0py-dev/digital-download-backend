@@ -4,30 +4,31 @@ const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_KEY
 );
-
-export async function saveDownloadKey(key, filename) {
-  const { error } = await supabase
+export async function saveDownloadKey(key, filenames) {
+  const response = await supabase
     .from("downloads")
-    .insert({ key, filename, used: false });
+    .insert([{ key, filenames }]);
 
-  if (error) {
-    console.error("❌ Error saving download key:", error);
-    throw error;
+  if (response.error) {
+    console.error("❌ Error saving download key:", response.error);
+    throw response.error;
   }
 }
 
 export async function useDownloadKey(key) {
   const { data, error } = await supabase
     .from("downloads")
-    .select("filename")
+    .select("filenames")
     .eq("key", key)
-    .eq("used", false)
     .single();
 
-  if (error || !data) {
-    console.warn("⚠️ Invalid or already used key:", error || "No data");
-    return null;
-  }
+  if (error || !data) return null;
+
+  await supabase.from("downloads").delete().eq("key", key);
+
+  return data.filenames;
+}
+
 
   // Mark as used
   const { error: updateError } = await supabase
