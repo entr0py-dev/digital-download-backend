@@ -1,22 +1,18 @@
 {
   "name": "digital-download-backend",
   "version": "1.0.0",
-  "description": "Shopify digital download backend using Supabase and MailerSend",
-  "main": "server.js",
+  "description": "",
+  "main": "index.js",
+  "type": "module",
   "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js"
   },
-  "keywords": [],
-  "author": "Your Name",
-  "license": "ISC",
-  "type": "module",
   "dependencies": {
-    "@supabase/supabase-js": "^2.39.5",
-    "dotenv": "^16.3.1",
-    "express": "^4.18.2",
-    "node-fetch": "^2.6.12",
-    "archiver": "^6.0.0"
-}
-
+    "express": "^4.18.0",
+    "dotenv": "^16.0.0",
+    "node-fetch": "^3.0.0",
+    "archiver": "^6.0.0",
+    "@supabase/supabase-js": "^2.0.0"
   }
 }
