@@ -77,9 +77,7 @@ app.get("/download/:key", async (req, res) => {
       return res.status(500).send("❌ Failed to fetch file from Supabase");
     }
 
-    const stream = Readable.fromWeb
-      ? Readable.fromWeb(fetchResponse.body)
-      : fetchResponse.body;
+   const stream = fetchResponse.body;
 
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.setHeader("Content-Type", fetchResponse.headers.get("Content-Type") || "application/octet-stream");
