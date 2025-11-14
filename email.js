@@ -23,8 +23,12 @@ export async function sendDownloadEmail(to, key) {
     }),
   });
 
+  const responseBody = await res.text();
+
+  console.log("📤 MailerSend response status:", res.status);
+  console.log("📨 MailerSend response body:", responseBody);
+
   if (!res.ok) {
-    console.error(await res.text());
     throw new Error("❌ Failed to send email");
   }
 }
