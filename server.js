@@ -21,50 +21,42 @@ app.use(
   })
 );
 
-// ✅ Webhook route
+// ✅ Debug Webhook route
 app.post("/webhook", async (req, res) => {
+  console.log("📬 Webhook received");
+  console.log("Headers:", req.headers);
+  console.log("Raw body:", req.rawBody);
+  console.log("Parsed body:", req.body);
+
   const hmacHeader = req.headers["x-shopify-hmac-sha256"];
   const rawBody = req.rawBody;
+
+  if (!hmacHeader || !rawBody) {
+    console.warn("❌ Missing HMAC header or rawBody");
+    return res.status(400).send("Bad request");
+  }
 
   const hash = crypto
     .createHmac("sha256", process.env.SHOPIFY_WEBHOOK_SECRET)
     .update(rawBody, "utf8")
     .digest("base64");
 
+  console.log("🔐 Computed hash:", hash);
+  console.log("🔑 HMAC header:", hmacHeader);
+
   if (hash !== hmacHeader) {
     console.warn("❌ Invalid webhook signature");
     return res.status(401).send("Unauthorized");
   }
 
-  const lineItems = req.body?.line_items || [];
-  const customerEmail = req.body?.email;
+  console.log("✅ Signature valid");
 
-  for (const item of lineItems) {
-    const productName = item.title;
-    const variant = item.variant_title;
+  // Log payload fields
+  console.log("Line items:", req.body?.line_items);
+  console.log("Customer email:", req.body?.email);
 
-    if (
-      productName === "GEN B x VERTIGO BOOTLEG SELECTIONS VOL.1" &&
-      variant === "WAV"
-    ) {
-      const filenames = [
-        "MILEY CYRUS - WE CAN'T STOP (GEN B BOOTLEG) [DUB].wav",
-        "LADY GAGA - POKERFACE (VERTIGO x GEN B BOOTLEG) [DUB].wav",
-        "KODAK BLACK - ZEZE (GEN-B BOOTLEG) [DUB].wav",
-        "DIZZEE RASCAL - BONKERS (GEN B BOOTLEG) [DUB].wav",
-        "DAVE FT. JHUS - SAMANTHA (VERTIGO BOOTLEG) [DUB].wav"
-      ];
-
-      const key = crypto.randomBytes(16).toString("hex");
-
-      await saveDownloadKey(key, JSON.stringify(filenames));
-      await sendDownloadEmail(customerEmail, key);
-    }
-  }
-
-  res.sendStatus(200);
+  res.status(200).send("OK");
 });
-
 
 // ✅ Health check route
 app.get("/", (req, res) => {
