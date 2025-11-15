@@ -18,7 +18,7 @@ app.use(
 )
 
 // ✅ Shopify webhook handler
-app.post("/webhook", (req, res) => {
+app.post("/webhook", async (req, res) => {
     const hmacHeader = req.get("X-Shopify-Hmac-Sha256")
     const topic = req.get("X-Shopify-Topic")
     const domain = req.get("X-Shopify-Shop-Domain")
@@ -32,8 +32,8 @@ app.post("/webhook", (req, res) => {
     console.log("📩 Incoming Shopify Webhook:", topic)
     console.log("🔑 HMAC Header:", hmacHeader)
     console.log("🔐 Computed hash:", hash)
-    const verified = hash === hmacHeader
 
+    const verified = hash === hmacHeader
     if (!verified) {
         console.warn("❌ Invalid webhook signature")
         return res.status(401).send("Unauthorized")
@@ -43,21 +43,36 @@ app.post("/webhook", (req, res) => {
 
     try {
         const data = JSON.parse(rawBody)
+        const email = data?.email
+        const lineItems = data?.line_items || []
 
-        console.log("📦 Webhook payload:", data)
-        console.log("📧 Customer email:", data.email)
-        console.log("📦 Line items:", data.line_items)
+        console.log("📧 Customer email:", email)
+        console.log("📦 Line items:", lineItems)
 
-        if (topic === "orders/paid") {
-            console.log("✅ Handling orders/paid...")
+        if (topic === "orders/paid" && email && lineItems.length > 0) {
+            // Get SKUs from line items
+            const skus = lineItems
+                .map((item) => item.sku)
+                .filter((sku) => !!sku)
 
-            // ✅ Your fulfillment logic goes here
-            // await sendDownloadEmail(data.email, downloadLink)
+            console.log("🎯 SKUs:", skus)
+
+            if (skus.length > 0) {
+                // Generate download key
+                const downloadKey = await saveDownloadKey(skus)
+                const downloadUrl = `${process.env.DOWNLOAD_BASE_URL}/download/${downloadKey}`
+
+                console.log("📩 Sending download link:", downloadUrl)
+
+                await sendDownloadEmail(email, downloadUrl)
+            } else {
+                console.warn("⚠️ No SKUs found for this order.")
+            }
         }
 
         res.status(200).send("Webhook received")
     } catch (err) {
-        console.error("❌ Error parsing webhook payload:", err)
+        console.error("❌ Error handling webhook:", err)
         res.status(500).send("Error")
     }
 })
