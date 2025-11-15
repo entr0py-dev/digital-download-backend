@@ -9,6 +9,19 @@ import archiver from "archiver";
 
 dotenv.config();
 
+// Map SKU → list of filenames in Supabase bucket
+const SKU_TO_FILES = {
+  "DUBPACK-1": [
+    "GENB_VERTIGO_1.wav",
+    "GENB_VERTIGO_2.wav",
+    "GENB_VERTIGO_3.wav",
+    "GENB_VERTIGO_4.wav",
+    "GENB_VERTIGO_5.wav"
+  ]
+  // You can add more SKUs later
+};
+
+
 const app = express();
 
 // Capture raw body for signature verification
@@ -78,7 +91,14 @@ app.post("/webhook", async (req, res) => {
     console.log("🔑 Generated download key:", downloadKey);
 
     // Save download key + filenames for this SKU
-    await saveDownloadKey(downloadKey, sku);
+  const filenames = SKU_TO_FILES[sku];
+
+if (!filenames) {
+  console.error(`❌ No filenames found for SKU ${sku}`);
+  return res.status(500).send("No files mapped for this product");
+}
+
+await saveDownloadKey(downloadKey, filenames);
 
     // 👉 IMPORTANT: pass ONLY the key to the email function.
     // email.js should construct the full URL like:
