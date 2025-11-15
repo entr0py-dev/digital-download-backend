@@ -22,19 +22,40 @@ app.use(
 );
 
 // ✅ Debug Webhook route
-app.post("/webhook", async (req, res) => {
-  console.log("📬 Webhook received");
-  console.log("Headers:", req.headers);
-  console.log("Raw body:", req.rawBody);
-  console.log("Parsed body:", req.body);
+app.post("/webhook", express.raw({ type: "application/json" }), (req, res) => {
+    const hmacHeader = req.get("X-Shopify-Hmac-Sha256")
+    const topic = req.get("X-Shopify-Topic")
+    const domain = req.get("X-Shopify-Shop-Domain")
 
-  const hmacHeader = req.headers["x-shopify-hmac-sha256"];
-  const rawBody = req.rawBody;
+    const rawBody = req.body.toString("utf8")
+    const verified = verifyShopifyWebhook(rawBody, hmacHeader)
 
-  if (!hmacHeader || !rawBody) {
-    console.warn("❌ Missing HMAC header or rawBody");
-    return res.status(400).send("Bad request");
-  }
+    console.log(`📩 Incoming Shopify Webhook: ${topic} from ${domain}`)
+    console.log(`🔐 Verified: ${verified}`)
+    console.log("📦 Raw Payload:", rawBody)
+
+    if (!verified) {
+        return res.status(401).send("Unauthorized webhook")
+    }
+
+    // Handle webhook topic (e.g. orders/paid)
+    try {
+        const data = JSON.parse(rawBody)
+
+        if (topic === "orders/paid") {
+            console.log("✅ Handling orders/paid:", data)
+            // Your custom logic here
+        } else {
+            console.log(`⚠️ Unhandled topic: ${topic}`)
+        }
+
+        res.status(200).send("Webhook received")
+    } catch (err) {
+        console.error("❌ Error parsing webhook:", err)
+        res.status(500).send("Error")
+    }
+})
+
 
   const hash = crypto
     .createHmac("sha256", process.env.SHOPIFY_WEBHOOK_SECRET)
