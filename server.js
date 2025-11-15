@@ -1,123 +1,130 @@
-import express from "express"
-import dotenv from "dotenv"
-import crypto from "crypto"
-import fetch from "node-fetch"
-import { Readable } from "node:stream"
-import { saveDownloadKey, useDownloadKey } from "./db.js"
-import { sendDownloadEmail } from "./email.js"
-import archiver from "archiver"
+import express from "express";
+import dotenv from "dotenv";
+import crypto from "crypto";
+import fetch from "node-fetch";
+import archiver from "archiver";
+import { saveDownloadKey, useDownloadKey } from "./db.js";
+import { sendDownloadEmail } from "./email.js";
 
-dotenv.config()
+dotenv.config();
 
-const app = express()
+const app = express();
 
-// 👇 Capture raw body for webhook signature verification
+// Capture raw body for signature verification
 app.use(
     "/webhook",
     express.raw({ type: "application/json" })
-)
+);
 
-// ✅ Shopify webhook handler
-app.post("/webhook", async (req, res) => {
-    const hmacHeader = req.get("X-Shopify-Hmac-Sha256")
-    const topic = req.get("X-Shopify-Topic")
-    const domain = req.get("X-Shopify-Shop-Domain")
-    const rawBody = req.body.toString("utf8")
-
-    const hash = crypto
+// 🧪 Verify Shopify webhook signature
+function verifyShopifyWebhook(rawBody, hmacHeader) {
+    const generated = crypto
         .createHmac("sha256", process.env.SHOPIFY_WEBHOOK_SECRET)
         .update(rawBody, "utf8")
-        .digest("base64")
+        .digest("base64");
 
-    console.log("📩 Incoming Shopify Webhook:", topic)
-    console.log("🔑 HMAC Header:", hmacHeader)
-    console.log("🔐 Computed hash:", hash)
+    return generated === hmacHeader;
+}
 
-    const verified = hash === hmacHeader
-    if (!verified) {
-        console.warn("❌ Invalid webhook signature")
-        return res.status(401).send("Unauthorized")
-    }
-
-    console.log("✅ Signature valid")
-
+// ✅ WEBHOOK
+app.post("/webhook", async (req, res) => {
     try {
-        const data = JSON.parse(rawBody)
-        const email = data?.email
-        const lineItems = data?.line_items || []
+        const rawBody = req.body.toString("utf8");
+        const hmacHeader = req.get("X-Shopify-Hmac-Sha256");
+        const topic = req.get("X-Shopify-Topic");
 
-        console.log("📧 Customer email:", email)
-        console.log("📦 Line items:", lineItems)
+        console.log("📩 Incoming Shopify Webhook:", topic);
 
-        if (topic === "orders/paid" && email && lineItems.length > 0) {
-            // Get SKUs from line items
-            const skus = lineItems
-                .map((item) => item.sku)
-                .filter((sku) => !!sku)
-
-            console.log("🎯 SKUs:", skus)
-
-            if (skus.length > 0) {
-                // Generate download key
-                const downloadKey = await saveDownloadKey(skus)
-                const downloadUrl = `${process.env.DOWNLOAD_BASE_URL}/download/${downloadKey}`
-
-                console.log("📩 Sending download link:", downloadUrl)
-
-                await sendDownloadEmail(email, downloadUrl)
-            } else {
-                console.warn("⚠️ No SKUs found for this order.")
-            }
+        // Verify Shopify signature
+        if (!verifyShopifyWebhook(rawBody, hmacHeader)) {
+            console.log("❌ Invalid HMAC");
+            return res.status(401).send("Unauthorized");
         }
 
-        res.status(200).send("Webhook received")
+        console.log("✅ Signature valid");
+
+        const data = JSON.parse(rawBody);
+        const email = data.email;
+        const lineItems = data.line_items || [];
+
+        console.log("📧 Customer email:", email);
+        console.log("📦 Line items:", lineItems);
+
+        // Extract SKU(s)
+        const skus = lineItems.map(item => item.sku).filter(Boolean);
+
+        if (skus.length === 0) {
+            console.log("⚠️ No SKUs found for this order.");
+            return res.status(200).send("OK");
+        }
+
+        const sku = skus[0]; // First SKU
+        console.log("🎯 SKU:", sku);
+
+        // Create a download key
+        const downloadKey = crypto.randomUUID();
+
+        // Save download key + filenames
+        await saveDownloadKey(downloadKey, sku);
+
+        const downloadUrl = `${process.env.DOWNLOAD_BASE_URL}/download/${downloadKey}`;
+        console.log("📩 Sending download link:", downloadUrl);
+
+        // Send email
+        await sendDownloadEmail(email, downloadUrl);
+
+        res.status(200).send("Webhook processed");
     } catch (err) {
-        console.error("❌ Error handling webhook:", err)
-        res.status(500).send("Error")
+        console.error("❌ Error handling webhook:", err);
+        return res.status(500).send("Error");
     }
-})
+});
 
-// ✅ Health check route
+// Health check
 app.get("/", (req, res) => {
-    res.send("🎉 Digital Download Backend is Running!")
-})
+    res.send("🎉 Digital Download Backend is Running!");
+});
 
-// ✅ Download route (force file download)
+// ZIP download route
 app.get("/download/:key", async (req, res) => {
-    const { key } = req.params
-    const filenames = await useDownloadKey(key)
+    const key = req.params.key;
 
-    console.log("🔑 Key:", key)
-    console.log("📁 Filenames:", filenames)
+    console.log("🔑 Download key:", key);
 
-    if (!filenames || !filenames.length) {
-        return res.status(404).send("⛔ Invalid or expired download link")
+    const filenames = await useDownloadKey(key);
+
+    if (!filenames || filenames.length === 0) {
+        return res.status(404).send("❌ Invalid or expired link");
     }
 
-    const bucket = process.env.SUPABASE_BUCKET_NAME
-    const supabaseUrl = process.env.SUPABASE_URL
+    console.log("📁 Files to download:", filenames);
 
-    res.setHeader("Content-Disposition", `attachment; filename="download.zip"`)
-    res.setHeader("Content-Type", "application/zip")
+    res.setHeader("Content-Disposition", `attachment; filename="download.zip"`);
+    res.setHeader("Content-Type", "application/zip");
 
-    const archive = archiver("zip", { zlib: { level: 9 } })
-    archive.pipe(res)
+    const archive = archiver("zip", { zlib: { level: 9 } });
+    archive.pipe(res);
 
+    // Fetch each file from Supabase and add it to ZIP
     for (const filename of filenames) {
-        const fileUrl = `${supabaseUrl}/storage/v1/object/public/${bucket}/${filename}`
-        const response = await fetch(fileUrl)
+        const fileUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/${process.env.SUPABASE_BUCKET_NAME}/${filename}`;
+        console.log("⬇️ Fetching:", fileUrl);
 
-        if (response.ok) {
-            archive.append(response.body, { name: filename })
-        } else {
-            console.warn(`⚠️ Failed to fetch: ${filename}`)
+        const response = await fetch(fileUrl);
+
+        if (!response.ok) {
+            console.warn(`⚠️ Failed to fetch ${filename}`);
+            continue;
         }
+
+        archive.append(response.body, { name: filename });
     }
 
-    archive.finalize()
-})
+    archive.finalize();
+});
 
-const PORT = process.env.PORT || 3000
+// Start server
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`🚀 Server is running on port ${PORT}`)
-})
+    console.log(`🚀 Server running on ${PORT}`);
+});
